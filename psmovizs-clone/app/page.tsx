@@ -3,10 +3,13 @@
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Toaster, toast } from "react-hot-toast";
+import { useRouter } from "next/navigation";
 import {
   Search, X, ChevronRight, Loader2, Film, Globe,
   Download, Play, Pause, Volume2, VolumeX, Maximize2, Minimize2,
+  Tv, SkipForward, SkipBack,
 } from "lucide-react";
+ 
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface Category { name: string; url: string }
@@ -22,6 +25,34 @@ interface WatchState { url: string; name: string }
 
 // Breadcrumb stack entry
 interface BreadEntry { name: string; url: string }
+
+// Helper function to check if URL needs proxy
+function needsProxy(url: string): boolean {
+  if (!url.startsWith('http')) return false;
+  if (url.includes(window.location.hostname)) return false;
+  
+  // Check for common video streaming domains and patterns
+  const needsProxyPatterns = [
+    /dubshare\./i,
+    /stream\./i,
+    /play\./i,
+    /watch\./i,
+    /video\./i,
+    /cdn\./i,
+    /onestream\./i,
+    /uptodub\./i,
+    /\.mp4$/i,
+    /\.m3u8$/i,
+    /\.webm$/i,
+    /\.mkv$/i,
+    /moviesda/i,
+    /isaidub/i,
+    /downloadpage\.xyz/i,
+    /moviespage\.xyz/i,
+  ];
+  
+  return needsProxyPatterns.some(pattern => pattern.test(url));
+}
 
 // ── Poster cache ───────────────────────────────────────────────────────────
 const posterCache = new Map<string, string | null>();
@@ -91,6 +122,28 @@ function VideoPlayer({ url, title, onClose }: { url: string; title: string; onCl
   const [currentTime, setCurrentTime] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  // Block popups and new tabs
+  useEffect(() => {
+    const originalWindowOpen = window.open;
+    window.open = function() {
+      console.log('Blocked popup attempt');
+      return null;
+    };
+
+    const preventPopup = (e: MouseEvent) => {
+      if (e.ctrlKey || e.metaKey || e.button === 1) {
+        e.preventDefault();
+      }
+    };
+
+    document.addEventListener('click', preventPopup, true);
+
+    return () => {
+      window.open = originalWindowOpen;
+      document.removeEventListener('click', preventPopup, true);
+    };
+  }, []);
+
   useEffect(() => {
     const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", onFsChange);
@@ -110,6 +163,9 @@ function VideoPlayer({ url, title, onClose }: { url: string; title: string; onCl
 
   const seek = useCallback((s: number) => { if (videoRef.current) videoRef.current.currentTime += s; }, []);
 
+  const seekForward = useCallback(() => { if (videoRef.current) videoRef.current.currentTime += 10; }, []);
+  const seekBackward = useCallback(() => { if (videoRef.current) videoRef.current.currentTime -= 10; }, []);
+
   const toggleFullscreen = useCallback(() => {
     const container = videoRef.current?.parentElement;
     if (!container) return;
@@ -126,11 +182,13 @@ function VideoPlayer({ url, title, onClose }: { url: string; title: string; onCl
         case "m": e.preventDefault(); toggleMute(); break;
         case "arrowright": seek(5); break;
         case "arrowleft": seek(-5); break;
+        case "l": e.preventDefault(); seekForward(); break;
+        case "j": e.preventDefault(); seekBackward(); break;
       }
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [togglePlay, toggleMute, toggleFullscreen, seek]);
+  }, [togglePlay, toggleMute, toggleFullscreen, seek, seekForward, seekBackward]);
 
   useEffect(() => {
     const show = () => {
@@ -163,11 +221,21 @@ function VideoPlayer({ url, title, onClose }: { url: string; title: string; onCl
         </div>
       )}
       <video ref={videoRef} src={url} className="w-full h-full object-contain"
+        crossOrigin="anonymous"
         onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
         onTimeUpdate={() => { if (videoRef.current) { setCurrentTime(videoRef.current.currentTime); setProgress(videoRef.current.currentTime / videoRef.current.duration * 100); } }}
         onLoadedData={() => { setBuffering(false); setDuration(videoRef.current?.duration || 0); }}
-        onError={() => { setBuffering(false); toast.error("Stream unavailable. Try downloading instead."); }}
-        onClick={togglePlay} playsInline />
+        onLoadedMetadata={() => { setBuffering(false); setDuration(videoRef.current?.duration || 0); }}
+        onCanPlay={() => { setBuffering(false); }}
+        onWaiting={() => { setBuffering(true); }}
+        onCanPlayThrough={() => { setBuffering(false); }}
+        onError={(e) => { 
+          setBuffering(false); 
+          console.error('Video error:', e);
+          toast.error("Stream unavailable. Try downloading instead."); 
+        }}
+        onClick={togglePlay} playsInline 
+        controlsList="nodownload" />
       <AnimatePresence>
         {showControls && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -181,6 +249,21 @@ function VideoPlayer({ url, title, onClose }: { url: string; title: string; onCl
                 <X className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
               </button>
             </div>
+            
+            {/* Top Control Bar */}
+            <div className="flex items-center justify-center gap-4 mb-4">
+              <button onClick={seekBackward} className="text-white hover:text-red-500 transition-colors p-2" title="Skip backward 10 seconds">
+                <SkipBack className="w-5 h-5" />
+              </button>
+              <button onClick={togglePlay} className="text-white hover:text-red-500 transition-colors p-2 bg-white/10 rounded-full">
+                {playing ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current" />}
+              </button>
+              <button onClick={seekForward} className="text-white hover:text-red-500 transition-colors p-2" title="Skip forward 10 seconds">
+                <SkipForward className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Video and Bottom Controls */}
             <div className="space-y-3 sm:space-y-4">
               <div className="relative h-1 sm:h-1.5 w-full bg-white/20 rounded-full cursor-pointer overflow-hidden">
                 <div className="absolute inset-y-0 left-0 bg-red-600 transition-all duration-100" style={{ width: `${progress}%` }} />
@@ -190,9 +273,6 @@ function VideoPlayer({ url, title, onClose }: { url: string; title: string; onCl
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4 sm:gap-6">
-                  <button onClick={togglePlay} className="text-white hover:text-red-500 transition-colors">
-                    {playing ? <Pause className="w-5 h-5 sm:w-6 sm:h-6 fill-current" /> : <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-current" />}
-                  </button>
                   <div className="hidden sm:flex items-center gap-3">
                     <button onClick={toggleMute} className="text-white hover:text-red-500 transition-colors">
                       {muted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
@@ -217,14 +297,22 @@ function VideoPlayer({ url, title, onClose }: { url: string; title: string; onCl
 
 // ── Main Page ──────────────────────────────────────────────────────────────
 export default function HomePage() {
-  const [splash, setSplash] = useState(true);
+  const router = useRouter();
+  const [splash, setSplash] = useState(() => {
+    // Check if intro has already been shown in this session
+    if (typeof window !== 'undefined') {
+      const hasSeenIntro = sessionStorage.getItem('hasSeenIntro');
+      return !hasSeenIntro; // Show splash only if not seen before
+    }
+    return true;
+  });
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [movies, setMovies] = useState<Movie[]>([]);
   const [moviesLoading, setMoviesLoading] = useState(false);
   const [search, setSearch] = useState("");
-  const [site, setSite] = useState<"moviesda" | "isaidub">("moviesda");
+  const [site, setSite] = useState<"moviesda" | "isaidub" | "animesalt">("moviesda");
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -235,10 +323,64 @@ export default function HomePage() {
   const [watching, setWatching] = useState<WatchState | null>(null);
 
   useEffect(() => {
-    loadCategories(site);
-    const t = setTimeout(() => setSplash(false), 2500);
-    return () => clearTimeout(t);
+    // Check URL parameters for site selection
+    const urlParams = new URLSearchParams(window.location.search);
+    const siteParam = urlParams.get('site') as "moviesda" | "isaidub" | null;
+    
+    if (siteParam && (siteParam === "moviesda" || siteParam === "isaidub")) {
+      setSite(siteParam);
+      loadCategories(siteParam);
+    } else {
+      loadCategories(site);
+    }
+    
+    // Only show intro if it hasn't been shown in this session
+    if (splash) {
+      const t = setTimeout(() => {
+        setSplash(false);
+        // Mark intro as seen for this session
+        sessionStorage.setItem('hasSeenIntro', 'true');
+      }, 2500);
+      return () => clearTimeout(t);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Global popup and ad blocker
+  useEffect(() => {
+    // Override window.open to prevent new tabs
+    const originalWindowOpen = window.open;
+    window.open = function() {
+      console.log('Blocked global popup attempt');
+      return null;
+    };
+
+    // Block message-based popup attempts
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data && typeof event.data === 'object') {
+        if (event.data.type === 'open' || event.data.action === 'open') {
+          event.preventDefault();
+          console.log('Blocked message-based popup');
+        }
+      }
+    };
+
+    // Block ctrl+click and middle click
+    const preventNewTab = (e: MouseEvent) => {
+      if (e.ctrlKey || e.metaKey || e.button === 1) {
+        e.preventDefault();
+        console.log('Blocked new tab attempt');
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    document.addEventListener('click', preventNewTab, true);
+
+    return () => {
+      window.open = originalWindowOpen;
+      window.removeEventListener('message', handleMessage);
+      document.removeEventListener('click', preventNewTab, true);
+    };
   }, []);
 
   const loadCategories = async (s: string) => {
@@ -251,7 +393,7 @@ export default function HomePage() {
     finally { setLoading(false); }
   };
 
-  const switchSite = (s: "moviesda" | "isaidub") => {
+  const switchSite = (s: "moviesda" | "isaidub" | "animesalt") => {
     setSite(s); setSelectedCategory(null); setSearch(""); loadCategories(s);
   };
 
@@ -380,7 +522,31 @@ export default function HomePage() {
       {/* Site switcher */}
       {!selectedCategory && (
         <div className="max-w-7xl mx-auto px-4 pt-8">
-          <div className="flex p-1 bg-white/5 rounded-2xl border border-white/10 w-full max-w-md mx-auto sm:mx-0">
+          {/* Mobile: Three rows - Tamil Movies & Dubbed on top, Anime & Everything Collection below */}
+          <div className="sm:hidden space-y-2">
+            <div className="flex p-1 bg-white/5 rounded-2xl border border-white/10 gap-1">
+              <button onClick={() => switchSite("moviesda")}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all ${site === "moviesda" ? "bg-red-600 text-white shadow-lg shadow-red-600/20" : "text-zinc-500 hover:text-white hover:bg-white/5"}`}>
+                <Film className="w-4 h-4" /> Tamil Movies
+              </button>
+              <button onClick={() => switchSite("isaidub")}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all ${site === "isaidub" ? "bg-red-600 text-white shadow-lg shadow-red-600/20" : "text-zinc-500 hover:text-white hover:bg-white/5"}`}>
+                <Globe className="w-4 h-4" /> Tamil Dubbed
+              </button>
+            </div>
+            <div className="flex p-1 bg-white/5 rounded-2xl border border-white/10 gap-1">
+              <button onClick={() => router.push("/anime")}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all text-zinc-500 hover:text-white hover:bg-white/5`}>
+                <Tv className="w-4 h-4" /> Animes
+              </button>
+              <button onClick={() => router.push("/everything")}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all text-zinc-500 hover:text-white hover:bg-white/5`}>
+                <Globe className="w-4 h-4" /> Everything
+              </button>
+            </div>
+          </div>
+          {/* Desktop: All four in one row */}
+          <div className="hidden sm:flex p-1 bg-white/5 rounded-2xl border border-white/10 w-full max-w-3xl mx-auto sm:mx-0">
             <button onClick={() => switchSite("moviesda")}
               className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all ${site === "moviesda" ? "bg-red-600 text-white shadow-lg shadow-red-600/20" : "text-zinc-500 hover:text-white hover:bg-white/5"}`}>
               <Film className="w-4 h-4" /> Tamil Movies
@@ -388,6 +554,14 @@ export default function HomePage() {
             <button onClick={() => switchSite("isaidub")}
               className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all ${site === "isaidub" ? "bg-red-600 text-white shadow-lg shadow-red-600/20" : "text-zinc-500 hover:text-white hover:bg-white/5"}`}>
               <Globe className="w-4 h-4" /> Tamil Dubbed
+            </button>
+            <button onClick={() => router.push("/anime")}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all text-zinc-500 hover:text-white hover:bg-white/5`}>
+              <Tv className="w-4 h-4" /> Animes
+            </button>
+            <button onClick={() => router.push("/everything")}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all text-zinc-500 hover:text-white hover:bg-white/5`}>
+              <Globe className="w-4 h-4" /> Everything
             </button>
           </div>
         </div>
@@ -499,7 +673,7 @@ export default function HomePage() {
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
                 <h2 className="text-2xl font-bold flex items-center gap-2">
                   <span className="w-2 h-8 bg-red-600 rounded-full" />
-                  {site === "moviesda" ? "Tamil Movies" : "Tamil Dubbed Movies"}
+                  {site === "moviesda" ? "Tamil Movies" : site === "isaidub" ? "Tamil Dubbed Movies" : "Animes Collection"}
                 </h2>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -607,9 +781,48 @@ export default function HomePage() {
                           <span className="text-xs font-black uppercase tracking-widest text-zinc-500">Watch Online</span>
                         </div>
                         <div className="grid grid-cols-1 gap-2">
-                          {details.watchLinks.map((link, i) => (
+                          {details.watchLinks.filter((link, index) => {
+                              // Filter out duplicate "Server 1" - only keep the second occurrence
+                              const linkName = link.name.toLowerCase();
+                              if (linkName.includes('server 1')) {
+                                // Check if this is the first occurrence of "server 1"
+                                const previousServer1Count = details.watchLinks.slice(0, index).filter(prevLink => 
+                                  prevLink.name.toLowerCase().includes('server 1')
+                                ).length;
+                                return previousServer1Count > 0; // Only show if there was a previous server 1
+                              }
+                              return true;
+                            }).map((link, i) => (
                             <button key={i}
-                              onClick={() => setWatching({ url: link.url, name: details.name })}
+                              onClick={async () => {
+                              try {
+                                let finalUrl = link.url;
+                                
+                                // If this is a stream-resolve URL, resolve it first
+                                if (link.url.includes('/api/stream-resolve')) {
+                                  const res = await fetch(link.url);
+                                  const data = await res.json();
+                                  if (data.videoUrl) {
+                                    finalUrl = data.videoUrl;
+                                    console.log('Resolved stream URL:', finalUrl);
+                                  } else if (data.error) {
+                                    console.error('Stream resolve error:', data.error);
+                                    toast.error('Could not resolve video stream: ' + data.error);
+                                    return;
+                                  } else {
+                                    toast.error('Could not resolve video stream');
+                                    return;
+                                  }
+                                }
+                                
+                                // Use proxy for external streaming URLs to avoid CORS issues
+                                const videoUrl = needsProxy(finalUrl) ? `/api/proxy?url=${encodeURIComponent(finalUrl)}` : finalUrl;
+                                setWatching({ url: videoUrl, name: details.name });
+                              } catch (error) {
+                                console.error('Error resolving stream:', error);
+                                toast.error('Failed to resolve video stream');
+                              }
+                            }}
                               className="flex items-center justify-between p-4 bg-red-600/5 hover:bg-red-600/10 border border-red-600/10 hover:border-red-600/50 rounded-2xl transition-all group">
                               <div className="flex items-center gap-3">
                                 <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center shadow-lg shadow-red-600/20">

@@ -4,12 +4,13 @@ import * as cheerio from "cheerio";
 const SITES: Record<string, string> = {
   moviesda: "https://moviesda18.com",
   isaidub: "https://isaidub.love",
+  animesalt: "https://animesalt.ac",
 };
 
 export async function GET(req: NextRequest) {
   const site = req.nextUrl.searchParams.get("site") || "moviesda";
   const baseUrl = SITES[site] || SITES.moviesda;
-
+ 
   try {
     const res = await fetch(baseUrl, {
       headers: {
@@ -24,7 +25,79 @@ export async function GET(req: NextRequest) {
 
     const categories: { name: string; url: string }[] = [];
 
-    // Try multiple selectors for category links
+    if (site === "animesalt") {
+      // Scrape anime categories from animesalt.ac
+      $("a").each((_, el) => {
+        const href = $(el).attr("href") || "";
+        const text = $(el).text().trim();
+        if (!text || text.length < 2) return;
+        
+        // Filter for anime category links
+        const isCategory =
+          (href.match(/\/(genre|type|season|year|status|anime)/i) ||
+           href.match(/(anime|season|year|genre)/i)) &&
+          !href.match(/\.(jpg|png|gif|mp4|zip|rar)/i) &&
+          href !== "/" &&
+          href !== baseUrl &&
+          !href.includes("episode") &&
+          !href.includes("watch");
+
+        if (isCategory) {
+          const url = href.startsWith("http")
+            ? href.replace(baseUrl, "")
+            : href;
+          
+          // Avoid duplicates
+          if (!categories.find((c) => c.url === url) && url.startsWith("/")) {
+            categories.push({ name: text, url });
+          }
+        }
+      });
+
+      // If scraping didn't work, try alternative selectors
+      if (categories.length === 0) {
+        $("nav a, .menu a, .navigation a, header a").each((_, el) => {
+          const href = $(el).attr("href") || "";
+          const text = $(el).text().trim();
+          if (!text || text.length < 2) return;
+          
+          if (href.match(/\/(genre|type|season|year|anime)/i) && !href.includes("episode")) {
+            const url = href.startsWith("http") ? href.replace(baseUrl, "") : href;
+            if (!categories.find((c) => c.url === url) && url.startsWith("/")) {
+              categories.push({ name: text, url });
+            }
+          }
+        });
+      }
+
+      // Fallback to hardcoded categories if still empty
+      if (categories.length === 0) {
+        return NextResponse.json({
+          categories: [
+            { name: "Anime List", url: "/anime-list" },
+            { name: "Popular Anime", url: "/popular" },
+            { name: "Recently Updated", url: "/recently-updated" },
+            { name: "New Season", url: "/new-season" },
+            { name: "Anime Movies", url: "/anime-movies" },
+            { name: "TV Series", url: "/tv-series" },
+            { name: "Action", url: "/genre/action" },
+            { name: "Adventure", url: "/genre/adventure" },
+            { name: "Comedy", url: "/genre/comedy" },
+            { name: "Drama", url: "/genre/drama" },
+            { name: "Fantasy", url: "/genre/fantasy" },
+            { name: "Romance", url: "/genre/romance" },
+            { name: "Sci-Fi", url: "/genre/sci-fi" },
+            { name: "Slice of Life", url: "/genre/slice-of-life" },
+            { name: "Supernatural", url: "/genre/supernatural" },
+            { name: "Thriller", url: "/genre/thriller" },
+          ],
+        });
+      }
+
+      return NextResponse.json({ categories });
+    }
+
+    // Try multiple selectors for category links (moviesda and isaidub)
     $("a").each((_, el) => {
       const href = $(el).attr("href") || "";
       const text = $(el).text().trim();
@@ -73,7 +146,7 @@ export async function GET(req: NextRequest) {
             { name: "Daily Updated Tamil Movies", url: "/tamilrockers-movies/" },
           ],
         });
-      } else {
+      } else if (site === "isaidub") {
         return NextResponse.json({
           categories: [
             { name: "Tamil A-Z Dubbed Movies", url: "/tamil-atoz-dubbed-movies/" },
@@ -92,6 +165,28 @@ export async function GET(req: NextRequest) {
             { name: "Tamil HD Dubbed Movies", url: "/movie/tamil-dubbed-movies-download/" },
             { name: "Tamil Dubbed Web Series", url: "/tamil-dubbed-web-series/" },
             { name: "Hollywood Movies in (English)", url: "/movie/hollywood-movies-in-english/" },
+          ],
+        });
+      } else if (site === "animesalt") {
+        return NextResponse.json({
+          categories: [
+            { name: "Latest Anime Episodes", url: "/anime-list" },
+            { name: "Popular Anime", url: "/popular" },
+            { name: "Recently Updated", url: "/recently-updated" },
+            { name: "New Season Anime", url: "/new-season" },
+            { name: "Movies", url: "/anime-movies" },
+            { name: "TV Series", url: "/tv-series" },
+            { name: "OVA", url: "/ova" },
+            { name: "ONA", url: "/ona" },
+            { name: "Specials", url: "/specials" },
+            { name: "Action Anime", url: "/genre/action" },
+            { name: "Adventure Anime", url: "/genre/adventure" },
+            { name: "Comedy Anime", url: "/genre/comedy" },
+            { name: "Drama Anime", url: "/genre/drama" },
+            { name: "Fantasy Anime", url: "/genre/fantasy" },
+            { name: "Romance Anime", url: "/genre/romance" },
+            { name: "Sci-Fi Anime", url: "/genre/sci-fi" },
+            { name: "Slice of Life Anime", url: "/genre/slice-of-life" },
           ],
         });
       }

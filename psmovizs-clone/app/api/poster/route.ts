@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     .replace(/\d{4}/g, "")
     .replace(/\b(HD|HQ|DVDRip|BluRay|WEBRip|CAM|1080p|720p|480p|360p)\b/gi, "")
     .trim();
-
+ 
   try {
     // Try OMDB API (free key with limited requests)
     const omdbRes = await fetch(

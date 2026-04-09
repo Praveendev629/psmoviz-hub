@@ -3,8 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 const SITES: Record<string, string> = {
   moviesda: "https://moviesda18.com",
   isaidub: "https://isaidub.love",
+  animesalt: "https://animesalt.ac",
 };
-
+    
 const HEADERS = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
   "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
@@ -180,13 +181,47 @@ function isIsaidubLetterPageUrl(url: string): boolean {
   const cleaned = url.split("?")[0].replace(/\/+$/, "");
   return /atoz\/[a-zA-Z]$/.test(cleaned);
 }
-/** Extract movie links from a page, filtering out nav/alphabet/pagination links */
+/** Extract movie/anime links from a page, filtering out nav/alphabet/pagination links */
 function extractMoviesFromPage(
   html: string,
   baseUrl: string,
   site: string
 ): { title: string; url: string }[] {
   const movies: { title: string; url: string }[] = [];
+
+  // For animesalt, scrape anime cards/links
+  if (site === "animesalt") {
+    // Try to find anime cards or list items
+    const animeSelectors = [
+      /<a[^>]+href="([^"]*(?:anime|watch|episode)[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi,
+      /<a[^>]+href="([^"]*\/anime\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi,
+      /<a[^>]+href="([^"]*\/watch\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi,
+    ];
+
+    for (const selector of animeSelectors) {
+      let match: RegExpExecArray | null;
+      while ((match = selector.exec(html)) !== null) {
+        const href = match[1].trim();
+        const text = match[2].replace(/<[^>]*>/g, "").trim();
+        
+        if (!text || text.length < 2) continue;
+        if (href.includes(".jpg") || href.includes(".png") || href.includes(".gif")) continue;
+        
+        // Skip navigation and non-anime links
+        if (text.match(/^(home|login|register|search|menu|genre|type|season)/i)) continue;
+        
+        if (!movies.find(m => m.url === href)) {
+          movies.push({ title: text, url: href });
+        }
+      }
+      
+      // If we found anime, break the loop
+      if (movies.length > 0) break;
+    }
+
+    console.log(`animesalt extractMoviesFromPage: Found ${movies.length} anime`);
+    return movies;
+  }
 
   // First, try to match div.f structure (isaidub letter pages)
   // Example: <div class="f"> <img .../> <a href="/movie/...">Title</a> </div>
@@ -259,19 +294,24 @@ function extractMoviesFromPage(
       candidates.push({ url: href, title: text });
     }
 
-    // Filter candidates to keep only movie-like URLs
+    // Filter candidates to keep only movie/anime-like URLs
     const movieCandidates = candidates.filter(c => {
       const url = c.url.toLowerCase();
       const text = c.title;
       const hasYear = /\(\d{4}\)/.test(text);
       
       const isMovieUrl = url.includes("/movie/") || url.includes("/series/") || /-(?:movie|moviesda)(?:\/|$)/i.test(url);
-      const isInternal = url.startsWith("/") || url.includes("moviesda18.com");
+      const isInternal = url.startsWith("/") || url.includes("moviesda18.com") || url.includes("animesalt.ac");
       const isLetterOrPage = !!url.match(/\/[a-z]([\/#]|$)/) || !!url.match(/\/page\/(\d+)/);
       const isNotIndex = !isLetterOrPage;
       
       if (site === "moviesda") {
         return isInternal && isNotIndex && (isMovieUrl || hasYear || url.includes("tamil-movies") || url.includes("moviesda18.com/tamil-movies"));
+      }
+
+      if (site === "animesalt") {
+        const hasAnimeContext = url.match(/anime|episode|watch/i);
+        return (isMovieUrl || hasAnimeContext) && isNotIndex;
       }
 
       const hasMovieContext = url.match(/movie|series|dubbed/i);
@@ -329,11 +369,12 @@ export async function GET(req: NextRequest) {
     // Get pagination info
     const lastPage = getLastPage(firstHtml, site);
     const isMoviesdaLetterPage = site === "moviesda" && isMoviesdaLetterPageUrl(url);
+    const isAnimesaltPage = site === "animesalt";
     const pageMode = site === "moviesda"
       ? (usesMoviesdaPathPagination(firstHtml) ? "path" : "query")
       : "query";
-    // For isaidub, allow up to 50 pages; for moviesda, cap at 30
-    const maxPages = site === "isaidub" ? Math.min(lastPage, 50) : Math.min(lastPage, 30);
+    // For isaidub, allow up to 50 pages; for moviesda, cap at 30; for animesalt, cap at 20
+    const maxPages = site === "isaidub" ? Math.min(lastPage, 50) : site === "animesalt" ? Math.min(lastPage, 20) : Math.min(lastPage, 30);
     console.log(`URL: ${fullUrl}`);
     console.log(`Last page detected: ${lastPage}, page mode: ${pageMode}`);
 
@@ -348,6 +389,9 @@ export async function GET(req: NextRequest) {
         if (isIsaidubLetterPage) {
           pageUrl = `${basePageUrl}/${p}`;
         } else if (isMoviesdaLetterPage) {
+          const sep = fullUrl.includes("?") ? "&" : "?";
+          pageUrl = `${fullUrl}${sep}page=${p}`;
+        } else if (isAnimesaltPage) {
           const sep = fullUrl.includes("?") ? "&" : "?";
           pageUrl = `${fullUrl}${sep}page=${p}`;
         } else if (site === "moviesda" && pageMode === "path") {
