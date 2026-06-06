@@ -58,7 +58,7 @@ function needsProxy(url: string): boolean {
 const posterCache = new Map<string, string | null>();
 
 // ── MoviePoster ────────────────────────────────────────────────────────────
-const MoviePoster = memo(function MoviePoster({ title }: { title: string }) {
+const MoviePoster = memo(function MoviePoster({ title, movieUrl, site }: { title: string; movieUrl?: string; site?: string }) {
   const [poster, setPoster] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [inView, setInView] = useState(false);
@@ -75,18 +75,24 @@ const MoviePoster = memo(function MoviePoster({ title }: { title: string }) {
 
   useEffect(() => {
     if (!inView) return;
-    if (posterCache.has(title)) { setPoster(posterCache.get(title) ?? null); setLoading(false); return; }
+    const cacheKey = movieUrl || title;
+    if (posterCache.has(cacheKey)) { setPoster(posterCache.get(cacheKey) ?? null); setLoading(false); return; }
     let alive = true;
     (async () => {
       try {
-        const res = await fetch(`/api/poster?q=${encodeURIComponent(title)}`);
+        // Build query: include movieUrl+site to get site-native poster first
+        let url = `/api/poster?q=${encodeURIComponent(title)}`;
+        if (movieUrl && site) {
+          url += `&movieUrl=${encodeURIComponent(movieUrl)}&site=${encodeURIComponent(site)}`;
+        }
+        const res = await fetch(url);
         const data = await res.json();
-        if (alive) { setPoster(data.poster); posterCache.set(title, data.poster); }
+        if (alive) { setPoster(data.poster); posterCache.set(cacheKey, data.poster); }
       } catch { if (alive) setPoster(null); }
       finally { if (alive) setLoading(false); }
     })();
     return () => { alive = false; };
-  }, [title, inView]);
+  }, [title, movieUrl, site, inView]);
 
   return (
     <div ref={ref} className="absolute inset-0">
@@ -321,6 +327,7 @@ export default function HomePage() {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [subSearch, setSubSearch] = useState("");
   const [watching, setWatching] = useState<WatchState | null>(null);
+  const [watchMode, setWatchMode] = useState<"video" | "iframe">("video");
 
   useEffect(() => {
     // Check URL parameters for site selection
@@ -652,7 +659,7 @@ export default function HomePage() {
                       onClick={() => openDetails(movie.title, movie.url)}
                       className="group cursor-pointer">
                       <div className="relative aspect-[2/3] bg-white/5 rounded-2xl border border-white/5 overflow-hidden group-hover:border-red-600/50 transition-all shadow-xl shadow-black">
-                        <MoviePoster title={movie.title} />
+                        <MoviePoster title={movie.title} movieUrl={movie.url} site={site} />
                         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-4">
                           <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center shadow-lg shadow-red-600/40 transform scale-75 group-hover:scale-100 transition-transform">
                             <Play className="w-6 h-6 text-white" />
@@ -759,8 +766,24 @@ export default function HomePage() {
               <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
                 {watching ? (
                   <div className="space-y-4">
-                    <VideoPlayer url={watching.url} title={watching.name} onClose={() => setWatching(null)} />
-                    <button onClick={() => setWatching(null)}
+                    {watchMode === "iframe" ? (
+                      <div className="space-y-3">
+                        <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
+                          <iframe
+                            src={watching.url}
+                            title={watching.name}
+                            className="absolute inset-0 w-full h-full rounded-2xl border border-white/10"
+                            allowFullScreen
+                            allow="autoplay; fullscreen; encrypted-media"
+                            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
+                          />
+                        </div>
+                        <p className="text-xs text-zinc-500 text-center">Streaming: {watching.name}</p>
+                      </div>
+                    ) : (
+                      <VideoPlayer url={watching.url} title={watching.name} onClose={() => setWatching(null)} />
+                    )}
+                    <button onClick={() => { setWatching(null); setWatchMode("video"); }}
                       className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-sm font-bold text-zinc-400 hover:text-white transition-all">
                       ← Back to Links
                     </button>
@@ -797,6 +820,7 @@ export default function HomePage() {
                               onClick={async () => {
                               try {
                                 let finalUrl = link.url;
+                                let mode: "video" | "iframe" = "video";
                                 
                                 // If this is a stream-resolve URL, resolve it first
                                 if (link.url.includes('/api/stream-resolve')) {
@@ -805,6 +829,9 @@ export default function HomePage() {
                                   if (data.videoUrl) {
                                     finalUrl = data.videoUrl;
                                     console.log('Resolved stream URL:', finalUrl);
+                                    // If resolved URL is a web page (not direct video), use iframe
+                                    const isDirectVideo = /\.(mp4|m3u8|webm|mkv|avi|mov)(\?|$)/i.test(finalUrl);
+                                    if (!isDirectVideo) mode = "iframe";
                                   } else if (data.error) {
                                     console.error('Stream resolve error:', data.error);
                                     toast.error('Could not resolve video stream: ' + data.error);
@@ -815,9 +842,20 @@ export default function HomePage() {
                                   }
                                 }
                                 
-                                // Use proxy for external streaming URLs to avoid CORS issues
-                                const videoUrl = needsProxy(finalUrl) ? `/api/proxy?url=${encodeURIComponent(finalUrl)}` : finalUrl;
-                                setWatching({ url: videoUrl, name: details.name });
+                                // For direct video URLs, use proxy if needed; else use iframe
+                                if (mode === "video") {
+                                  const isDirectVideo = /\.(mp4|m3u8|webm|mkv|avi|mov)(\?|$)/i.test(finalUrl);
+                                  if (!isDirectVideo && finalUrl.startsWith('http')) mode = "iframe";
+                                }
+
+                                if (mode === "video") {
+                                  const videoUrl = needsProxy(finalUrl) ? `/api/proxy?url=${encodeURIComponent(finalUrl)}` : finalUrl;
+                                  setWatchMode("video");
+                                  setWatching({ url: videoUrl, name: details.name });
+                                } else {
+                                  setWatchMode("iframe");
+                                  setWatching({ url: finalUrl, name: details.name });
+                                }
                               } catch (error) {
                                 console.error('Error resolving stream:', error);
                                 toast.error('Failed to resolve video stream');
