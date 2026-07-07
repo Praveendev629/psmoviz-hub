@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const SITES: Record<string, string> = {
-  moviesda: "https://moviesda31.com",
+  moviesda: "https://moviesda33.com",
   isaidub: "https://isaidub.guru",
   animesalt: "https://animesalt.ac",
 };
@@ -11,7 +11,7 @@ const HEADERS = {
   "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
   "Accept-Language": "en-US,en;q=0.9",
   "Accept-Encoding": "gzip, deflate, br",
-  "Referer": "https://moviesda31.com/",
+  "Referer": "https://moviesda33.com/",
   "DNT": "1",
 };
 
@@ -77,7 +77,7 @@ function hasMovieAnchors(html: string): boolean {
     if (href.includes("atoz") || href.match(/\/([a-z])$/i)) continue;
     if (href.includes(".jpg") || href.includes(".png") || href.includes(".gif") || href.includes(".mp4") || href.includes(".zip")) continue;
 
-    if (href.startsWith("http") && !href.includes("isaidub.guru") && !href.includes("isaidub.love") && !href.includes("moviesda31.com") && !href.includes("moviesda18.com")) continue;
+    if (href.startsWith("http") && !href.includes("isaidub.guru") && !href.includes("isaidub.love") && !href.includes("moviesda33.com") && !href.includes("moviesda18.com")) continue;
     if (href.startsWith("/") || href.includes("/movie/") || href.includes("-movies") || href.includes("/tamil-")) {
       count += 1;
       if (count > 4) return true;
@@ -208,11 +208,11 @@ function extractMoviesFromPage(
     return movies;
   }
 
-  // First, try to match div.f structure (isaidub/moviesda folder list pages)
-  const divFWrapperRegex = /<div[^>]*class=(?:"|')?[^"'>]*\bf\b[^"'>]*(?:"|')?[^>]*>([\s\S]*?)<\/div>/gi;
+  // First, try to match div.f and div.folder structure (isaidub/moviesda folder list pages)
+  const divFWrapperRegex = /<div[^>]*class=(?:"|')?[^"'>]*\b(f|folder)\b[^"'>]*(?:"|')?[^>]*>([\s\S]*?)<\/div>/gi;
   let match: RegExpExecArray | null;
   while ((match = divFWrapperRegex.exec(html)) !== null) {
-    const divContent = match[1];
+    const divContent = match[2];
     const anchorMatch = /<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i.exec(divContent);
     if (!anchorMatch) continue;
 
@@ -225,7 +225,7 @@ function extractMoviesFromPage(
       if (!movies.find(m => m.url === href)) {
         movies.push({ title: text, url: href });
       }
-    } else if (site === "moviesda" && href && (href.startsWith("/") || href.includes("moviesda31.com"))) {
+    } else if (site === "moviesda" && href && (href.startsWith("/") || href.includes("moviesda33.com"))) {
       if (!movies.find(m => m.url === href)) {
         movies.push({ title: text, url: href });
       }
@@ -284,12 +284,12 @@ function extractMoviesFromPage(
       const hasYear = /\(\d{4}\)/.test(text);
       
       const isMovieUrl = url.includes("/movie/") || url.includes("/series/") || /-(?:movie|moviesda)(?:\/|$)/i.test(url);
-      const isInternal = url.startsWith("/") || url.includes("moviesda31.com") || url.includes("animesalt.ac") || url.includes("isaidub.guru");
+      const isInternal = url.startsWith("/") || url.includes("moviesda33.com") || url.includes("animesalt.ac") || url.includes("isaidub.guru");
       const isLetterOrPage = !!url.match(/\/[a-z]([\/#]|$)/) || !!url.match(/\/page\/(\d+)/);
       const isNotIndex = !isLetterOrPage;
       
       if (site === "moviesda") {
-        return isInternal && isNotIndex && (isMovieUrl || hasYear || url.includes("tamil-movies") || url.includes("moviesda31.com"));
+        return isInternal && isNotIndex && (isMovieUrl || hasYear || url.includes("tamil-movies") || url.includes("moviesda33.com"));
       }
 
       if (site === "animesalt") {
