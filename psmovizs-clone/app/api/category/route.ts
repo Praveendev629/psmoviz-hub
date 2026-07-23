@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 const SITES: Record<string, string> = {
   moviesda: "https://moviesda33.com",
   isaidub: "https://isaidub.guru",
-  animesalt: "https://animesalt.ac",
+  animesalt: "https://animesalt.link",
 };
     
 const HEADERS = {
@@ -284,7 +284,7 @@ function extractMoviesFromPage(
       const hasYear = /\(\d{4}\)/.test(text);
       
       const isMovieUrl = url.includes("/movie/") || url.includes("/series/") || /-(?:movie|moviesda)(?:\/|$)/i.test(url);
-      const isInternal = url.startsWith("/") || url.includes("moviesda33.com") || url.includes("animesalt.ac") || url.includes("isaidub.guru");
+      const isInternal = url.startsWith("/") || url.includes("moviesda33.com") || url.includes("animesalt.link") || url.includes("isaidub.guru");
       const isLetterOrPage = !!url.match(/\/[a-z]([\/#]|$)/) || !!url.match(/\/page\/(\d+)/);
       const isNotIndex = !isLetterOrPage;
       
