@@ -3,8 +3,8 @@ import * as cheerio from "cheerio";
 
 const SITES: Record<string, string> = {
   moviesda: "https://moviesda33.com",
-  isaidub: "https://isaidub.guru",
-  animesalt: "https://animesalt.link",
+  isaidub: "https://isaidubweb.me",
+  animesalt: "https://animesalt.cx",
 };
 
 export async function GET(req: NextRequest) {
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     const categories: { name: string; url: string }[] = [];
 
     if (site === "animesalt") {
-      // Scrape anime categories from animesalt.link
+      // Scrape anime categories from animesalt.cx
       $("a").each((_, el) => {
         const href = $(el).attr("href") || "";
         const text = $(el).text().trim();

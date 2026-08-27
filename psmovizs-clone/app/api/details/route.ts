@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 const SITES: Record<string, string> = {
   moviesda: "https://moviesda33.com",
-  isaidub: "https://isaidub.guru",
-  animesalt: "https://animesalt.link",
+  isaidub: "https://isaidubweb.me",
+  animesalt: "https://animesalt.cx",
 };
    
 const HEADERS = {
@@ -136,7 +136,7 @@ async function resolveMoviesdaChain(
 }
 
 /**
- * Isaidub.guru download chain:
+ * isaidubweb.me download chain:
  * /download/page/ID/ → dubpage.xyz/download/view/ID → dubmv.xyz/download/file/ID
  * Final page has: CDN links (dub.uptodub.ch) + dub.onestream.today/stream/video/ID watch links
  */

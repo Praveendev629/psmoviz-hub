@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 const SITES: Record<string, string> = {
   moviesda: "https://moviesda33.com",
-  isaidub: "https://isaidub.guru",
-  animesalt: "https://animesalt.link",
+  isaidub: "https://isaidubweb.me",
+  animesalt: "https://animesalt.cx",
 };
     
 const HEADERS = {
@@ -77,7 +77,7 @@ function hasMovieAnchors(html: string): boolean {
     if (href.includes("atoz") || href.match(/\/([a-z])$/i)) continue;
     if (href.includes(".jpg") || href.includes(".png") || href.includes(".gif") || href.includes(".mp4") || href.includes(".zip")) continue;
 
-    if (href.startsWith("http") && !href.includes("isaidub.guru") && !href.includes("isaidub.love") && !href.includes("moviesda33.com") && !href.includes("moviesda18.com")) continue;
+    if (href.startsWith("http") && !href.includes("isaidubweb.me") && !href.includes("isaidub.love") && !href.includes("moviesda33.com") && !href.includes("moviesda18.com")) continue;
     if (href.startsWith("/") || href.includes("/movie/") || href.includes("-movies") || href.includes("/tamil-")) {
       count += 1;
       if (count > 4) return true;
@@ -284,7 +284,7 @@ function extractMoviesFromPage(
       const hasYear = /\(\d{4}\)/.test(text);
       
       const isMovieUrl = url.includes("/movie/") || url.includes("/series/") || /-(?:movie|moviesda)(?:\/|$)/i.test(url);
-      const isInternal = url.startsWith("/") || url.includes("moviesda33.com") || url.includes("animesalt.link") || url.includes("isaidub.guru");
+      const isInternal = url.startsWith("/") || url.includes("moviesda33.com") || url.includes("animesalt.cx") || url.includes("isaidubweb.me");
       const isLetterOrPage = !!url.match(/\/[a-z]([\/#]|$)/) || !!url.match(/\/page\/(\d+)/);
       const isNotIndex = !isLetterOrPage;
       

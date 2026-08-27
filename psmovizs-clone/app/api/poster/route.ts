@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const SITE_BASES: Record<string, string> = {
   moviesda: "https://moviesda33.com",
-  isaidub: "https://isaidub.guru",
+  isaidub: "https://isaidubweb.me",
 };
 
 const HEADERS = {

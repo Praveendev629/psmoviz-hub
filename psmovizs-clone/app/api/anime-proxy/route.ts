@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
-  const targetUrl = req.nextUrl.searchParams.get("url") || "https://animesalt.link/";
+  const targetUrl = req.nextUrl.searchParams.get("url") || "https://animesalt.cx/";
     
   try {
     const response = await fetch(targetUrl, {
